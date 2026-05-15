@@ -1,0 +1,3 @@
+# 자동 수집(Playwright) 기능 — 로컬 PC에서만 설치
+-r requirements.txt
+playwright==1.44.0
