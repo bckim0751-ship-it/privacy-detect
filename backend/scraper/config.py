@@ -3,6 +3,11 @@
 - auth_required=False : 회원가입 진입 시 인증 전 동의서 (자동 수집 가능)
 - auth_required=True  : 로그인 후 서비스 신청 시 동의서 (.env 계정 사용)
 - manual=True         : 앱 전용 등 자동화 불가 → 수동 입력 필요
+
+현대 서비스 공통사항:
+  - 회원가입/로그인은 account.hyundai.com (Pleos SSO) 통합
+  - 동의서는 가입 플로우 중 모달 팝업으로 노출
+  - 테이블 구조: 구분 | 수집 목적 | 수집 항목 | 보유·이용 기간
 """
 from dataclasses import dataclass, field
 from typing import Optional
@@ -48,19 +53,22 @@ SCRAPE_CONFIGS: list[ScrapeConfig] = [
 
     # ── 1. 메인 포털 / 차량 구매 ────────────────────────────────────────────
 
+    # ── Pleos SSO (account.hyundai.com) — 현대 서비스 공통 계정 ────────────────
+    # 현대 서비스 대부분이 account.hyundai.com(Pleos) 회원가입 시 동의서 노출
     ScrapeConfig(
         service_code="HMC_WEB_MAIN",
-        entry_url="https://www.hyundai.com/kr/ko/e/member/sign-up",
+        entry_url="https://account.hyundai.com/user/v2/join/step1",
         steps=[
-            Step("wait_for_selector", "input[type='checkbox'], .agree-wrap, .terms-wrap, [class*='consent']"),
+            Step("wait", "", "2000"),
+            Step("wait_for_selector", "[class*='agree'], [class*='terms'], [class*='consent'], input[type='checkbox']", optional=True),
+            # 약관 더보기 버튼 클릭 시도
+            Step("click", "[class*='more'], [class*='view'], button[class*='detail']", optional=True),
+            Step("wait", "", "1000"),
         ],
         consent_blocks=[
-            ConsentBlock("collection_use", True,
-                         content_selector="[class*='required'] [class*='content'], [class*='terms-body']:first-of-type"),
-            ConsentBlock("collection_use", False,
-                         content_selector="[class*='optional'] [class*='content']"),
-            ConsentBlock("third_party", False,
-                         content_selector="[class*='third'] [class*='content'], [class*='provide'] [class*='content']"),
+            ConsentBlock("collection_use", True,  content_selector="[class*='agree'] table, [class*='terms'] table, [role='dialog'] table"),
+            ConsentBlock("collection_use", False, content_selector="[class*='optional'] table, [class*='select'] table"),
+            ConsentBlock("third_party",    False, content_selector="[class*='third'] table, [class*='provide'] table"),
         ],
     ),
 

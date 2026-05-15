@@ -236,30 +236,79 @@ def save_to_db(result: ScrapeResult) -> int:
 
 
 def _extract_consent_from_page(page) -> str:
-    """페이지 전체에서 개인정보 동의 관련 텍스트 블록을 추출"""
+    """
+    페이지에서 개인정보 동의서 텍스트 추출.
+    1순위: 모달/팝업 내 테이블 구조 파싱 (현대 Pleos 스타일)
+    2순위: 키워드 밀도 높은 텍스트 블록
+    """
+    # 1순위: 모달 팝업 내 테이블 파싱
+    modal_selectors = [
+        "[class*='modal'] table",
+        "[class*='popup'] table",
+        "[class*='dialog'] table",
+        "[role='dialog'] table",
+        ".layer table",
+        "#layer table",
+    ]
+    for sel in modal_selectors:
+        tables = page.query_selector_all(sel)
+        if tables:
+            result_parts = []
+            # 모달 제목 추출
+            for title_sel in ["[class*='modal'] [class*='title']", "[class*='popup'] [class*='title']", "[role='dialog'] h2", "[role='dialog'] h3"]:
+                t = page.query_selector(title_sel)
+                if t:
+                    result_parts.append(f"【 {t.inner_text().strip()} 】\n")
+                    break
+            for table in tables:
+                result_parts.append(_parse_table(table))
+            combined = "\n".join(result_parts).strip()
+            if combined:
+                return combined
+
+    # 2순위: 모달 본문 전체 텍스트
+    for sel in ["[class*='modal'] [class*='cont']", "[class*='popup'] [class*='cont']",
+                "[role='dialog']", "[class*='modal-body']", "[class*='layer-body']"]:
+        el = page.query_selector(sel)
+        if el:
+            text = el.inner_text().strip()
+            if len(text) > 50:
+                return text[:3000]
+
+    # 3순위: 페이지 전체 키워드 탐색
     KEYWORDS = ["개인정보", "수집", "이용", "제공", "보유", "동의", "항목", "목적", "기간"]
     candidates = []
-
-    # 텍스트가 있는 주요 블록 태그 순회
-    for tag in ["div", "section", "article", "table", "p", "li"]:
-        elements = page.query_selector_all(tag)
-        for el in elements:
+    for tag in ["div", "section", "article", "table", "p"]:
+        for el in page.query_selector_all(tag):
             try:
                 t = el.inner_text().strip()
-                if len(t) < 30:
+                if len(t) < 50:
                     continue
                 hit = sum(1 for kw in KEYWORDS if kw in t)
-                if hit >= 3:
+                if hit >= 4:
                     candidates.append((hit, len(t), t))
             except Exception:
                 continue
 
     if not candidates:
         return ""
-
-    # 키워드 밀도 높은 순 → 가장 긴 텍스트 선택
     candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
     return candidates[0][2][:3000]
+
+
+def _parse_table(table_el) -> str:
+    """HTML 테이블을 텍스트 표 형태로 변환"""
+    rows = table_el.query_selector_all("tr")
+    if not rows:
+        return table_el.inner_text().strip()
+
+    lines = []
+    for row in rows:
+        cells = row.query_selector_all("th, td")
+        cell_texts = [c.inner_text().strip().replace("\n", " ") for c in cells]
+        if any(cell_texts):
+            lines.append(" | ".join(cell_texts))
+    return "\n".join(lines)
 
 
 def _extract(text: str, pattern: str) -> str:
