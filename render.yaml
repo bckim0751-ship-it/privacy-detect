@@ -6,7 +6,7 @@ services:
     pythonVersion: "3.11.9"
     buildCommand: |
       pip install -r requirements.txt &&
-      playwright install chromium --with-deps &&
+      playwright install chromium || true &&
       python seed.py
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
