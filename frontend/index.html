@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>개인정보 동의서 관리 시스템</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <span class="logo-icon">🔒</span>
+          <span class="logo-text">개인정보 동의서 관리</span>
+        </div>
+        <nav class="nav">
+          <button class="nav-btn active" data-page="dashboard">대시보드</button>
+          <button class="nav-btn" data-page="services">서비스 관리</button>
+          <button class="nav-btn" data-page="consent-forms">동의서 관리</button>
+        </nav>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- 대시보드 -->
+      <section id="page-dashboard" class="page active">
+        <div class="page-header">
+          <h1 class="page-title">대시보드</h1>
+        </div>
+        <div class="stats-grid" id="stats-grid">
+          <div class="stat-card"><div class="stat-label">전체 서비스</div><div class="stat-value" id="stat-services">-</div></div>
+          <div class="stat-card"><div class="stat-label">전체 동의서</div><div class="stat-value" id="stat-forms">-</div></div>
+          <div class="stat-card accent-blue"><div class="stat-label">수집·이용 동의서</div><div class="stat-value" id="stat-collection">-</div></div>
+          <div class="stat-card accent-purple"><div class="stat-label">제3자 제공 동의서</div><div class="stat-value" id="stat-third">-</div></div>
+          <div class="stat-card accent-green"><div class="stat-label">시행중</div><div class="stat-value" id="stat-active">-</div></div>
+          <div class="stat-card accent-yellow"><div class="stat-label">초안</div><div class="stat-value" id="stat-draft">-</div></div>
+          <div class="stat-card"><div class="stat-label">필수 동의서</div><div class="stat-value" id="stat-required">-</div></div>
+          <div class="stat-card"><div class="stat-label">선택 동의서</div><div class="stat-value" id="stat-optional">-</div></div>
+        </div>
+
+        <div class="section-title">최근 등록/수정 동의서</div>
+        <div class="table-wrap">
+          <table class="table" id="dashboard-table">
+            <thead>
+              <tr>
+                <th>서비스</th><th>동의서 유형</th><th>필수/선택</th><th>버전</th><th>상태</th><th>시행일</th><th>최종수정</th>
+              </tr>
+            </thead>
+            <tbody id="dashboard-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 서비스 관리 -->
+      <section id="page-services" class="page">
+        <div class="page-header">
+          <h1 class="page-title">서비스 관리</h1>
+          <button class="btn btn-primary" id="btn-new-service">+ 서비스 등록</button>
+        </div>
+        <div class="search-bar">
+          <input type="text" id="service-search" class="input" placeholder="서비스명 또는 코드 검색..." />
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>서비스 코드</th><th>서비스명</th><th>담당 부서</th><th>등록일</th><th>동의서 수</th><th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="services-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 동의서 관리 -->
+      <section id="page-consent-forms" class="page">
+        <div class="page-header">
+          <h1 class="page-title">동의서 관리</h1>
+          <button class="btn btn-primary" id="btn-new-form">+ 동의서 등록</button>
+        </div>
+        <div class="filter-bar">
+          <select id="filter-service" class="select"><option value="">전체 서비스</option></select>
+          <select id="filter-type" class="select">
+            <option value="">전체 유형</option>
+            <option value="collection_use">수집·이용</option>
+            <option value="third_party">제3자 제공</option>
+          </select>
+          <select id="filter-status" class="select">
+            <option value="">전체 상태</option>
+            <option value="active">시행중</option>
+            <option value="draft">초안</option>
+            <option value="inactive">미사용</option>
+          </select>
+          <input type="text" id="filter-q" class="input" placeholder="목적·항목·수신사 검색..." style="flex:1" />
+          <button class="btn btn-secondary" id="btn-search-forms">검색</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>서비스</th><th>유형</th><th>필수/선택</th><th>목적</th><th>보유기간</th><th>버전</th><th>상태</th><th>시행일</th><th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="forms-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 서비스 등록/수정 모달 -->
+  <div class="modal-backdrop" id="modal-service" style="display:none">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-service-title">서비스 등록</h2>
+        <button class="modal-close" data-modal="modal-service">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-service">
+          <input type="hidden" id="svc-id" />
+          <div class="form-group">
+            <label class="label">서비스 코드 <span class="required">*</span></label>
+            <input type="text" id="svc-code" class="input" placeholder="예: APP_MAIN" required />
+          </div>
+          <div class="form-group">
+            <label class="label">서비스명 <span class="required">*</span></label>
+            <input type="text" id="svc-name" class="input" placeholder="예: 메인 앱" required />
+          </div>
+          <div class="form-group">
+            <label class="label">담당 부서</label>
+            <input type="text" id="svc-dept" class="input" placeholder="예: 개인정보보호팀" />
+          </div>
+          <div class="form-group">
+            <label class="label">설명</label>
+            <textarea id="svc-desc" class="textarea" rows="3" placeholder="서비스에 대한 간략한 설명"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" data-modal="modal-service">취소</button>
+            <button type="submit" class="btn btn-primary">저장</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 동의서 등록/수정 모달 -->
+  <div class="modal-backdrop" id="modal-form" style="display:none">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modal-form-title">동의서 등록</h2>
+        <button class="modal-close" data-modal="modal-form">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-consent">
+          <input type="hidden" id="cf-id" />
+          <div class="form-row">
+            <div class="form-group flex1">
+              <label class="label">서비스 <span class="required">*</span></label>
+              <select id="cf-service" class="select" required></select>
+            </div>
+            <div class="form-group flex1">
+              <label class="label">동의서 유형 <span class="required">*</span></label>
+              <select id="cf-type" class="select" required>
+                <option value="collection_use">수집·이용 동의서</option>
+                <option value="third_party">제3자 제공 동의서</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group flex1">
+              <label class="label">필수/선택</label>
+              <select id="cf-required" class="select">
+                <option value="true">필수</option>
+                <option value="false">선택</option>
+              </select>
+            </div>
+            <div class="form-group flex1">
+              <label class="label">상태</label>
+              <select id="cf-status" class="select">
+                <option value="draft">초안</option>
+                <option value="active">시행중</option>
+                <option value="inactive">미사용</option>
+              </select>
+            </div>
+            <div class="form-group flex1">
+              <label class="label">버전</label>
+              <input type="text" id="cf-version" class="input" value="1.0" />
+            </div>
+            <div class="form-group flex1">
+              <label class="label">시행일</label>
+              <input type="date" id="cf-effective" class="input" />
+            </div>
+          </div>
+
+          <!-- 공통 -->
+          <div class="form-group">
+            <label class="label">수집·이용 목적 <span class="required">*</span></label>
+            <textarea id="cf-purpose" class="textarea" rows="3" required placeholder="예: 서비스 회원가입 및 관리, 고객 상담 처리"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="label">수집 항목 <span class="required">*</span></label>
+            <textarea id="cf-items" class="textarea" rows="3" required placeholder="예: 이름, 휴대폰번호, 이메일주소, 생년월일"></textarea>
+          </div>
+          <div class="form-group">
+            <label class="label">보유·이용 기간 <span class="required">*</span></label>
+            <input type="text" id="cf-retention" class="input" required placeholder="예: 회원 탈퇴 시까지 (단, 관련 법령에 따라 보존 필요 시 해당 기간)" />
+          </div>
+          <div class="form-group">
+            <label class="label">동의 거부 시 불이익</label>
+            <textarea id="cf-refusal" class="textarea" rows="2" placeholder="예: 서비스 이용이 불가합니다."></textarea>
+          </div>
+
+          <!-- 제3자 제공 전용 -->
+          <div id="third-party-section" style="display:none">
+            <div class="section-divider">제3자 제공 정보</div>
+            <div class="form-group">
+              <label class="label">제공받는 자 <span class="required">*</span></label>
+              <input type="text" id="cf-recipient" class="input" placeholder="예: (주)ABC파트너스" />
+            </div>
+            <div class="form-group">
+              <label class="label">제공받는 자의 이용 목적</label>
+              <textarea id="cf-recipient-purpose" class="textarea" rows="2" placeholder="예: 보험 상품 안내 및 마케팅"></textarea>
+            </div>
+            <div class="form-group">
+              <label class="label">제공받는 자의 보유·이용 기간</label>
+              <input type="text" id="cf-recipient-retention" class="input" placeholder="예: 동의 철회 시 또는 제공 목적 달성 후 즉시 파기" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="label">담당자 메모</label>
+            <textarea id="cf-memo" class="textarea" rows="2" placeholder="내부 참고사항"></textarea>
+          </div>
+
+          <!-- 수정 시: 개정 사유 -->
+          <div id="change-note-section" style="display:none">
+            <div class="section-divider">개정 정보</div>
+            <div class="form-row">
+              <div class="form-group flex1">
+                <label class="label">개정자</label>
+                <input type="text" id="cf-changed-by" class="input" placeholder="홍길동" />
+              </div>
+              <div class="form-group" style="flex:2">
+                <label class="label">개정 사유</label>
+                <input type="text" id="cf-change-note" class="input" placeholder="예: 법령 개정에 따른 보유기간 변경" />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" data-modal="modal-form">취소</button>
+            <button type="submit" class="btn btn-primary">저장</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 동의서 상세/이력 모달 -->
+  <div class="modal-backdrop" id="modal-detail" style="display:none">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2 class="modal-title">동의서 상세 / 개정 이력</h2>
+        <button class="modal-close" data-modal="modal-detail">&times;</button>
+      </div>
+      <div class="modal-body" id="modal-detail-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" style="display:none"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
