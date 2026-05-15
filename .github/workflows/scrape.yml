@@ -1,0 +1,50 @@
+name: 동의서 자동 수집
+
+on:
+  workflow_dispatch:          # 탭에서 수동 실행
+    inputs:
+      service_code:
+        description: '특정 서비스만 수집 (예: HMC_WEB_MAIN, 비우면 전체)'
+        required: false
+        default: ''
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+        with:
+          ref: claude/privacy-officer-tools-RnWuv
+
+      - name: Python 3.11 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 패키지 설치
+        run: |
+          cd backend
+          pip install -r requirements-scraper.txt
+
+      - name: Playwright Chromium 설치
+        run: playwright install chromium --with-deps
+
+      - name: 동의서 수집 실행
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
+          HMC_MAIN_EMAIL: ${{ secrets.HMC_MAIN_EMAIL }}
+          HMC_MAIN_PASSWORD: ${{ secrets.HMC_MAIN_PASSWORD }}
+          HMC_SHOP_EMAIL: ${{ secrets.HMC_SHOP_EMAIL }}
+          HMC_SHOP_PASSWORD: ${{ secrets.HMC_SHOP_PASSWORD }}
+          HMC_EPIT_EMAIL: ${{ secrets.HMC_EPIT_EMAIL }}
+          HMC_EPIT_PASSWORD: ${{ secrets.HMC_EPIT_PASSWORD }}
+          HEADLESS: "true"
+        run: |
+          cd backend
+          if [ -n "${{ github.event.inputs.service_code }}" ]; then
+            python -m scraper.runner --code ${{ github.event.inputs.service_code }}
+          else
+            python -m scraper.runner
+          fi
