@@ -1,11 +1,14 @@
 import json
+import subprocess
+import sys
 from datetime import datetime
 from typing import Optional, List
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 import os
@@ -212,6 +215,85 @@ def get_consent_form_history(form_id: int, db: Session = Depends(get_db)):
         .order_by(ConsentFormHistory.created_at.desc())
         .all()
     )
+
+
+# ── 스크래퍼 현황 / 실행 API ─────────────────────────────────────────────────
+
+from scraper.config import SCRAPE_CONFIGS
+
+class ScrapeStatusItem(BaseModel):
+    service_code: str
+    service_name: str
+    auto_available: bool     # Playwright 자동 수집 가능 여부
+    manual: bool             # 수동 입력 필요
+    manual_reason: str
+    has_consent_forms: bool  # DB에 동의서 등록 여부
+    consent_form_count: int
+
+
+@app.get("/api/scraper/status", response_model=List[ScrapeStatusItem])
+def get_scraper_status(db: Session = Depends(get_db)):
+    """35개 서비스의 자동/수동 수집 가능 여부 및 등록 현황 반환"""
+    result = []
+    for cfg in SCRAPE_CONFIGS:
+        svc = db.query(Service).filter(Service.code == cfg.service_code).first()
+        if not svc:
+            continue
+        count = db.query(ConsentForm).filter(ConsentForm.service_id == svc.id).count()
+        result.append(ScrapeStatusItem(
+            service_code=cfg.service_code,
+            service_name=svc.name,
+            auto_available=not cfg.manual and bool(cfg.entry_url),
+            manual=cfg.manual or not bool(cfg.entry_url),
+            manual_reason=cfg.manual_reason,
+            has_consent_forms=count > 0,
+            consent_form_count=count,
+        ))
+    return result
+
+
+_scrape_log: list[str] = []
+_scrape_running = False
+
+
+class ScrapeRequest(BaseModel):
+    service_code: str = ""   # 비어있으면 전체 자동 가능 서비스
+    headless: bool = True
+
+
+def _run_scraper(service_code: str, headless: bool):
+    global _scrape_running, _scrape_log
+    _scrape_running = True
+    _scrape_log = []
+    try:
+        cmd = [sys.executable, "-m", "scraper.runner"]
+        if service_code:
+            cmd += ["--code", service_code]
+        if not headless:
+            cmd += ["--headful"]
+        proc = subprocess.run(
+            cmd,
+            capture_output=True, text=True,
+            cwd=os.path.dirname(__file__),
+        )
+        _scrape_log = (proc.stdout + proc.stderr).splitlines()
+    finally:
+        _scrape_running = False
+
+
+@app.post("/api/scraper/run")
+def run_scraper(body: ScrapeRequest, background_tasks: BackgroundTasks):
+    """스크래퍼 백그라운드 실행 (결과는 /api/scraper/log 로 조회)"""
+    global _scrape_running
+    if _scrape_running:
+        raise HTTPException(409, "이미 수집 중입니다. 완료 후 다시 시도해주세요.")
+    background_tasks.add_task(_run_scraper, body.service_code, body.headless)
+    return {"message": "수집 시작됨", "service_code": body.service_code or "전체"}
+
+
+@app.get("/api/scraper/log")
+def get_scraper_log():
+    return {"running": _scrape_running, "log": _scrape_log}
 
 
 # ── 정적 파일 (프론트엔드) ────────────────────────────────────────────────────

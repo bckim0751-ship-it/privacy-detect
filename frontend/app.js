@@ -69,6 +69,7 @@ function showPage(page) {
   if (page === 'dashboard') loadDashboard();
   if (page === 'services') loadServices();
   if (page === 'consent-forms') loadConsentForms();
+  if (page === 'scraper') loadScraperStatus();
 }
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -458,6 +459,100 @@ async function viewForm(id) {
     ${historyHtml}
   `;
   openModal('modal-detail');
+}
+
+// ── 자동 수집 (Playwright) ────────────────────────────────────────────────────
+
+let logPollTimer = null;
+
+async function loadScraperStatus() {
+  const items = await api('GET', '/api/scraper/status');
+  const tbody = document.getElementById('scraper-tbody');
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">서비스 데이터가 없습니다.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map(item => {
+    const modeBadge = item.auto_available
+      ? '<span class="badge badge-green">자동</span>'
+      : '<span class="badge badge-yellow">수동 필요</span>';
+    const regBadge = item.has_consent_forms
+      ? `<span class="badge badge-blue">${item.consent_form_count}건 등록됨</span>`
+      : '<span class="badge badge-gray">미등록</span>';
+    const manualTip = item.manual
+      ? `<span title="${item.manual_reason}" style="cursor:help;color:var(--text-muted);font-size:11px"> ⓘ</span>` : '';
+    const runBtn = item.auto_available
+      ? `<button class="btn btn-sm btn-primary" onclick="runScraper('${item.service_code}')">수집 실행</button>`
+      : `<button class="btn btn-sm btn-secondary" onclick="showPage('consent-forms')">직접 입력</button>`;
+    return `
+      <tr>
+        <td><strong>${item.service_name}</strong><br/><code style="font-size:11px">${item.service_code}</code></td>
+        <td>${modeBadge}${manualTip}</td>
+        <td>${regBadge}</td>
+        <td>${runBtn}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function runScraper(serviceCode) {
+  const headless = document.getElementById('scraper-headless').checked;
+  try {
+    const res = await api('POST', '/api/scraper/run', { service_code: serviceCode, headless });
+    toast(res.message);
+    document.getElementById('scraper-log-wrap').style.display = 'block';
+    document.getElementById('scraper-log').textContent = '수집 시작 중...';
+    startLogPoll();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+document.getElementById('btn-scrape-all').addEventListener('click', async () => {
+  if (!confirm('자동 수집 가능한 모든 서비스의 동의서를 수집합니다. 계속하시겠습니까?')) return;
+  const headless = document.getElementById('scraper-headless').checked;
+  try {
+    const res = await api('POST', '/api/scraper/run', { service_code: '', headless });
+    toast(res.message);
+    document.getElementById('scraper-log-wrap').style.display = 'block';
+    document.getElementById('scraper-log').textContent = '전체 수집 시작 중...';
+    startLogPoll();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
+
+document.getElementById('btn-refresh-log').addEventListener('click', fetchLog);
+
+async function fetchLog() {
+  const data = await api('GET', '/api/scraper/log');
+  const logEl = document.getElementById('scraper-log');
+  const badge = document.getElementById('scraper-running-badge');
+  logEl.textContent = data.log.join('\n') || '(로그 없음)';
+  logEl.scrollTop = logEl.scrollHeight;
+  if (data.running) {
+    badge.textContent = '수집 중...';
+    badge.className = 'badge badge-yellow';
+  } else {
+    badge.textContent = '완료';
+    badge.className = 'badge badge-green';
+    stopLogPoll();
+    loadScraperStatus();
+  }
+}
+
+function startLogPoll() {
+  stopLogPoll();
+  logPollTimer = setInterval(fetchLog, 2000);
+}
+function stopLogPoll() {
+  if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
+}
+
+function downloadEnvExample() {
+  const link = document.createElement('a');
+  link.href = '/static/.env.example';
+  link.download = '.env.example';
+  link.click();
 }
 
 // ── 초기 로드 ─────────────────────────────────────────────────────────────────
