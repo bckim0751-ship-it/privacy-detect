@@ -92,7 +92,7 @@ SCRAPE_CONFIGS: list[ScrapeConfig] = [
 
     ScrapeConfig(
         service_code="HMC_WEB_MYHYUNDAI_PORTAL",
-        entry_url="https://myhyundai.hmc.co.kr/member/join/agree",
+        entry_url="https://www.hyundai.com/kr/ko/e/member/sign-up",
         steps=[
             Step("wait_for_selector", "[class*='agree'], [class*='terms']"),
         ],

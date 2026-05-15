@@ -138,16 +138,29 @@ def scrape_service(config: ScrapeConfig, headless: bool = True) -> ScrapeResult:
                         raise
                     print(f"    (optional step 타임아웃, 계속 진행): {step.action} {selector[:50]}")
 
-            # 동의서 텍스트 추출
+            # 동의서 텍스트 추출 (지정 셀렉터 → 폴백: 페이지 전체 키워드 탐색)
+            page_text_cache = None
+
             for block in config.consent_blocks:
                 text = ""
-                for sel in block.content_selector.split(","):
-                    sel = sel.strip()
-                    elements = page.query_selector_all(sel)
-                    if elements:
-                        text = "\n".join(el.inner_text() for el in elements).strip()
-                        if text:
-                            break
+
+                # 1차: 지정 셀렉터
+                if block.content_selector:
+                    for sel in block.content_selector.split(","):
+                        sel = sel.strip()
+                        elements = page.query_selector_all(sel)
+                        if elements:
+                            text = "\n".join(el.inner_text() for el in elements).strip()
+                            if text:
+                                break
+
+                # 2차 폴백: 페이지 전체에서 동의서 키워드 단락 추출
+                if not text:
+                    if page_text_cache is None:
+                        page_text_cache = _extract_consent_from_page(page)
+                    if page_text_cache:
+                        text = page_text_cache
+                        print(f"    ↩ 폴백 텍스트 사용: {len(text)}자")
 
                 if text:
                     result.consent_blocks.append({
@@ -159,8 +172,9 @@ def scrape_service(config: ScrapeConfig, headless: bool = True) -> ScrapeResult:
                         ),
                         "content": text,
                     })
+                    break  # 같은 페이지에서 중복 추출 방지
                 else:
-                    print(f"    ⚠ 블록 텍스트 미추출: {block.consent_type} required={block.is_required}")
+                    print(f"    ⚠ 텍스트 미추출: {block.consent_type} required={block.is_required}")
 
             result.success = True
 
@@ -219,6 +233,33 @@ def save_to_db(result: ScrapeResult) -> int:
         db.close()
 
     return saved
+
+
+def _extract_consent_from_page(page) -> str:
+    """페이지 전체에서 개인정보 동의 관련 텍스트 블록을 추출"""
+    KEYWORDS = ["개인정보", "수집", "이용", "제공", "보유", "동의", "항목", "목적", "기간"]
+    candidates = []
+
+    # 텍스트가 있는 주요 블록 태그 순회
+    for tag in ["div", "section", "article", "table", "p", "li"]:
+        elements = page.query_selector_all(tag)
+        for el in elements:
+            try:
+                t = el.inner_text().strip()
+                if len(t) < 30:
+                    continue
+                hit = sum(1 for kw in KEYWORDS if kw in t)
+                if hit >= 3:
+                    candidates.append((hit, len(t), t))
+            except Exception:
+                continue
+
+    if not candidates:
+        return ""
+
+    # 키워드 밀도 높은 순 → 가장 긴 텍스트 선택
+    candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return candidates[0][2][:3000]
 
 
 def _extract(text: str, pattern: str) -> str:

@@ -31,6 +31,17 @@ jobs:
       - name: Playwright Chromium 설치
         run: playwright install chromium --with-deps
 
+      - name: DB 연결 확인
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
+        run: |
+          cd backend
+          python -c "
+          import os
+          url = os.getenv('DATABASE_URL','미설정')
+          print('DB URL:', url[:30] + '...' if len(url) > 30 else url)
+          "
+
       - name: 동의서 수집 실행
         env:
           DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
